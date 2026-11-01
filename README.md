@@ -34,6 +34,9 @@ The project analyzes partition distribution, applies a salting technique, compar
 ```text
 spark-data-skew-project/
 │
+├── ai-documentation/
+│   └── prompt-history.md
+│
 ├── data/
 │   ├── input/
 │   │   └── orders.csv
@@ -58,11 +61,42 @@ spark-data-skew-project/
 │   └── test_pipeline.py
 │
 ├── reports/
+│   ├── metrics.json
+│   ├── customer_totals.csv
+│   ├── benchmark_results.csv
+│   ├── data_skew_analysis.png
+│   └── create_skew_chart.py
+│
 ├── README.md
+├── .gitignore
 └── test_spark.py
 ```
 
-## 5. Dataset Description
+*Note: Generated data and pipeline output directories are created locally when the project runs. They may be excluded from Git using `.gitignore`.*
+
+## 5. AI Usage and Prompt History
+
+This project was developed with assistance from ChatGPT.
+
+AI assistance was used for:
+- Learning Apache Spark and PySpark concepts.
+- Understanding data skew and optimization techniques.
+- Implementation guidance.
+- Debugging and troubleshooting.
+- Understanding benchmark results.
+- Preparing project documentation and visualizations.
+
+The developer ran the project locally, reviewed the implementation, verified the outputs, and studied the design decisions.
+
+The reconstructed AI prompt history and usage disclosure are available here:
+
+[View AI Prompt History](ai-documentation/prompt-history.md)
+
+**AI tool used:** ChatGPT only.
+
+The prompt-history document identifies reconstructed prompt summaries rather than claiming to be a complete verbatim transcript.
+
+## 6. Dataset Description
 
 The generator creates 100,000 base orders and appends 8 controlled data-quality test records, resulting in 100,008 input records.
 
@@ -76,13 +110,13 @@ A fixed random seed (`42`) ensures reproducibility.
 | amount | Order amount |
 | order_timestamp | Order creation timestamp |
 
-### Data distribution
+### Data Distribution
 
 - Approximately 70% of base orders belong to `CUST_HOT`.
 - Remaining orders are distributed across 1,000 normal customers.
 - Additional records test missing values, invalid amounts, duplicate IDs, blank customer IDs, and late-arriving timestamps.
 
-## 6. Architecture and Processing Flow
+## 7. Architecture and Processing Flow
 
 ```text
 Synthetic Data Generator
@@ -94,7 +128,7 @@ Synthetic Data Generator
      Spark Pipeline
           |
           v
-   Data Validation
+    Data Validation
           |
      +----+----+
      |    |    |
@@ -119,13 +153,13 @@ Synthetic Data Generator
  Metrics and Logs
 ```
 
-## 7. Data Skew Analysis
+## 8. Data Skew Analysis
 
 The initial dataset is partitioned by `customer_id`.
 
 The hot customer creates an uneven partition distribution.
 
-### Observed initial partition distribution
+### Observed Initial Partition Distribution
 
 | Partition | Records |
 |---|---:|
@@ -139,6 +173,7 @@ The hot customer creates an uneven partition distribution.
 | 7 | 4,094 |
 
 Partition 2 contains most of the records, demonstrating the impact of key skew.
+
 ### Hot Key Skew Analysis
 
 The customer-level order distribution reveals a highly concentrated hot key.
@@ -151,8 +186,9 @@ The customer-level order distribution reveals a highly concentrated hot key.
 | Average orders per normal customer | 29.85 |
 | Hot-key skew ratio | 2,350.34:1 |
 
-Key Finding: CUST_HOT has approximately 2,350 times more orders than the average normal customer. This demonstrates severe key-level data skew and motivates the use of salting.
-## Business Insights
+**Key Finding:** `CUST_HOT` has approximately 2,350 times more orders than the average normal customer. This demonstrates severe key-level data skew and motivates the use of salting.
+
+### Business Insights
 
 Analysis of the aggregated customer order data revealed significant order-value concentration.
 
@@ -164,11 +200,11 @@ Analysis of the aggregated customer order data revealed significant order-value 
 | CUST_HOT order count | 70,153 |
 | Total customer groups | 1,001 |
 
-Key Finding: A single customer contributes approximately 70.05% of the total order value. This confirms that the synthetic dataset contains significant customer-level concentration.
+**Key Finding:** A single customer contributes approximately 70.05% of the total order value. This confirms that the synthetic dataset contains significant customer-level concentration.
 
-Note: Amounts are in the dataset's units, not a specified real-world currency.
+*Note: Amounts are in the dataset's units, not a specified real-world currency.*
 
-## 8. Optimization: Salting
+## 9. Optimization: Salting
 
 Salting adds an additional key to distribute records belonging to the hot customer.
 
@@ -180,7 +216,7 @@ Instead of grouping only by `customer_id`, the first aggregation groups by:
 
 A second aggregation combines partial totals by `customer_id`.
 
-### Observed partition distribution after salting
+### Observed Partition Distribution After Salting
 
 | Partition | Records |
 |---|---:|
@@ -195,7 +231,7 @@ A second aggregation combines partial totals by `customer_id`.
 
 The busiest partition decreased from 73,992 to 21,041 records, approximately a 71.6% reduction.
 
-## 9. Benchmark Results
+## 10. Benchmark Results
 
 Three trials were conducted using the same cached input data.
 
@@ -210,11 +246,11 @@ Three trials were conducted using the same cached input data.
 
 Salting was approximately 60.1% slower on average in this local benchmark.
 
-Although salting improved partition distribution, the additional aggregation stage introduced overhead. For this workload and environment, the normal aggregation was faster.
+Although salting improved partition distribution, the additional aggregation stage introduced overhead. For this workload and environment, normal aggregation was faster.
 
 This demonstrates that reducing data skew does not automatically guarantee lower end-to-end runtime. Optimization decisions should consider workload size, partition distribution, and processing overhead.
 
-## 10. Data Quality and Validation
+## 11. Data Quality and Validation
 
 The pipeline applies business validation rules.
 
@@ -226,7 +262,7 @@ The pipeline applies business validation rules.
 - Quarantine all records associated with duplicate order IDs.
 - Retain older timestamps when the other validation rules pass.
 
-### Pipeline execution results
+### Pipeline Execution Results
 
 | Metric | Result |
 |---|---:|
@@ -243,7 +279,7 @@ The records reconcile:
 
 `100008 = 100001 + 5 + 2`
 
-## 11. Running the Project
+## 12. Running the Project
 
 ### Prerequisites
 
@@ -251,49 +287,49 @@ The records reconcile:
 - Java 21
 - Windows, macOS, or Linux with a compatible Spark environment
 
-### Install dependencies
+### Install Dependencies
 
 ```bash
 python -m pip install pyspark==4.0.3 pytest pandas
 ```
 
-### Generate synthetic data
+### Generate Synthetic Data
 
 ```bash
 python src/generate_data.py
 ```
 
-### Analyze skew
+### Analyze Skew
 
 ```bash
 python src/analyze_skew.py
 ```
 
-### Run salting optimization
+### Run Salting Optimization
 
 ```bash
 python src/optimize_skew.py
 ```
 
-### Run benchmark
+### Run Benchmark
 
 ```bash
 python src/benchmark.py
 ```
 
-### Run the complete pipeline
+### Run the Complete Pipeline
 
 ```bash
 python src/pipeline.py
 ```
 
-### Run automated tests
+### Run Automated Tests
 
 ```bash
-python -m pytest tests/test_pipeline.py -v
+python -m pytest tests/ -v
 ```
 
-## 12. Output Files
+## 13. Output Files
 
 The pipeline produces:
 
@@ -304,7 +340,7 @@ The pipeline produces:
 - `metrics.json` — record counts, runtime measurements, and correctness results.
 - `pipeline.log` — execution logs.
 
-## 13. Project Results and Visualizations
+## 14. Project Results and Visualizations
 
 ### Data Skew: Before vs After Salting
 
@@ -314,7 +350,7 @@ The following chart compares the partition distribution before and after applyin
 
 **Key Result:** The busiest partition's record count decreased from 73,992 to 21,041, representing approximately a 71.6% reduction.
 
-### Download Project Reports
+### Project Reports
 
 | Report | Description |
 |---|---|
@@ -324,8 +360,7 @@ The following chart compares the partition distribution before and after applyin
 | [Skew Analysis Chart](reports/data_skew_analysis.png) | Partition distribution visualization |
 | [Chart Generation Script](reports/create_skew_chart.py) | Python visualization code |
 
-
-## 14. Testing
+## 15. Testing
 
 The project includes six automated tests using Pytest.
 
@@ -338,7 +373,8 @@ The project includes six automated tests using Pytest.
 | Negative and zero amounts | PASSED |
 | Blank customer IDs | PASSED |
 
-**Test execution summary:**
+### Test Execution Summary
+
 - Total tests: 6
 - Passed: 6
 - Failed: 0
@@ -348,8 +384,9 @@ Run the tests using:
 
 ```bash
 python -m pytest tests/ -v
+```
 
-15. Limitations and Trade-offs
+## 16. Limitations and Trade-offs
 
 - The benchmark uses local Spark execution, not a multi-node cluster.
 - Runtime measurements can vary between runs.
@@ -358,6 +395,7 @@ python -m pytest tests/ -v
 - Pandas is used to write local CSV outputs because of the current Windows Hadoop configuration. This approach is suitable for this project's local dataset, but collecting large distributed datasets into Pandas is not scalable.
 - The current validation does not implement a complete late-arriving event or malformed timestamp policy.
 - Pipeline restart, backfill, and idempotency behaviour require further operational hardening.
+
 ### Idempotency and Repeatability Test
 
 The pipeline was executed twice using the same input dataset.
@@ -377,7 +415,7 @@ Before each run, previous generated outputs are cleaned from the output director
 
 This confirms repeatability for successful runs with the same input dataset. It does not yet guarantee transactional recovery after a failed or interrupted write.
 
-## 16. Conclusion
+## 17. Conclusion
 
 This project demonstrates the impact of data skew in Apache Spark, identifies a heavily concentrated customer key, and applies salting to improve partition distribution.
 
