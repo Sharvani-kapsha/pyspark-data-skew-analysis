@@ -139,6 +139,34 @@ The hot customer creates an uneven partition distribution.
 | 7 | 4,094 |
 
 Partition 2 contains most of the records, demonstrating the impact of key skew.
+### Hot Key Skew Analysis
+
+The customer-level order distribution reveals a highly concentrated hot key.
+
+| Metric | Result |
+|---|---:|
+| Hot customer | CUST_HOT |
+| Hot customer orders | 70,153 |
+| Normal customers | 1,000 |
+| Average orders per normal customer | 29.85 |
+| Hot-key skew ratio | 2,350.34:1 |
+
+Key Finding: CUST_HOT has approximately 2,350 times more orders than the average normal customer. This demonstrates severe key-level data skew and motivates the use of salting.
+## Business Insights
+
+Analysis of the aggregated customer order data revealed significant order-value concentration.
+
+| Metric | Result |
+|---|---:|
+| Total order value | 255,000,230.02 |
+| CUST_HOT order value | 178,625,584.97 |
+| CUST_HOT contribution to total order value | 70.05% |
+| CUST_HOT order count | 70,153 |
+| Total customer groups | 1,001 |
+
+Key Finding: A single customer contributes approximately 70.05% of the total order value. This confirms that the synthetic dataset contains significant customer-level concentration.
+
+Note: Amounts are in the dataset's units, not a specified real-world currency.
 
 ## 8. Optimization: Salting
 
