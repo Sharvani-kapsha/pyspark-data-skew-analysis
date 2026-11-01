@@ -1,21 +1,23 @@
+
 # Spark Data Skew Analysis and Optimization
 
 ## 1. Project Overview
 
-This project demonstrates how data skew affects distributed data processing in Apache Spark and how **salting** can help distribute records associated with heavily concentrated keys.
+This project demonstrates how data skew affects distributed data processing in Apache Spark and how salting can help distribute records associated with heavily concentrated keys across partitions.
 
 A reproducible synthetic e-commerce orders dataset is generated using Python. One customer (`CUST_HOT`) receives approximately 70% of the base orders, creating a data-skew scenario.
 
 The project includes:
 
 - Synthetic data generation
-- Data quality validation and duplicate quarantine
-- Partition and skew analysis
+- Data ingestion and schema definition
+- Data quality validation
+- Duplicate detection and quarantine
+- Partition analysis
 - Normal and salted aggregations
-- Aggregation correctness comparison
-- Runtime measurement
-- Pipeline logging and execution metrics
-- Failure recovery and repeat-run verification
+- Correctness and performance comparison
+- Execution metrics and logging
+- Repeatable pipeline execution and failure handling
 - Automated tests
 
 ## 2. Objectives
@@ -24,10 +26,11 @@ The project includes:
 - Simulate data skew using a highly concentrated customer key.
 - Analyze partition distribution.
 - Apply salting to distribute hot-key records.
-- Compare normal and salted aggregation performance.
+- Compare normal and optimized aggregation results.
+- Measure aggregation execution time.
 - Validate business rules and quarantine invalid records.
-- Verify aggregation correctness.
-- Support safe repeat execution and preserve previous successful output when a pipeline run fails.
+- Verify that normal and salted aggregations produce matching results.
+- Support repeatable execution and preserve previous successful output when a new run fails.
 
 ## 3. Technology Stack
 
@@ -35,23 +38,22 @@ The project includes:
 |---|---|
 | Python 3.13 | Data generation and pipeline logic |
 | Apache Spark 4.0.3 | Distributed data processing |
-| PySpark | Spark DataFrame operations |
-| Python CSV module | Local CSV output writing |
-| Pytest | Automated testing |
+| PySpark | Spark DataFrame transformations |
 | Java 21 | Spark runtime |
+| Pandas / NumPy | Supporting data analysis |
+| Matplotlib | Data visualization |
+| Pytest | Automated testing |
+| CSV / JSON | Input, output and execution metrics |
 
 ## 4. Project Structure
 
 ```text
 spark-data-skew-project/
 │
-├── ai-documentation/
-│   └── prompt-history.md
-│
 ├── data/
 │   ├── input/
 │   │   └── orders.csv
-│   └── output/                  # Generated locally
+│   └── output/
 │       ├── valid_orders/
 │       ├── invalid_orders/
 │       ├── duplicate_orders/
@@ -68,48 +70,24 @@ spark-data-skew-project/
 │   └── pipeline.py
 │
 ├── tests/
-│   ├── test_validation.py
 │   └── test_pipeline.py
 │
 ├── reports/
-│   ├── metrics.json
-│   ├── customer_totals.csv
-│   ├── benchmark_results.csv
-│   ├── data_skew_analysis.png
-│   └── create_skew_chart.py
-│
-├── README.md
 ├── requirements.txt
+├── README.md
 ├── .gitignore
 └── test_spark.py
 ```
 
-Generated pipeline output and temporary failed-run directories are excluded from Git.
+Generated output and temporary failure folders are excluded from Git.
 
-## 5. AI Usage and Prompt History
+## 5. Dataset Description
 
-This project was developed with assistance from ChatGPT.
+The synthetic dataset contains:
 
-AI assistance was used for:
-
-- Learning Apache Spark and PySpark concepts.
-- Understanding data skew and optimization techniques.
-- Implementation guidance.
-- Debugging and troubleshooting.
-- Interpreting benchmark results.
-- Preparing project documentation.
-
-The developer ran the project locally, reviewed the implementation, verified outputs, and studied the design decisions.
-
-[View AI Prompt History](ai-documentation/prompt-history.md)
-
-**AI tool used:** ChatGPT.
-
-The prompt-history document contains reconstructed prompt summaries rather than claiming to be a complete verbatim conversation transcript.
-
-## 6. Dataset Description
-
-The generator creates 100,000 base orders and appends eight controlled data-quality test records, resulting in **100,008 input records**.
+- 100,000 base orders.
+- 8 additional controlled data-quality test records.
+- 100,008 total input records.
 
 A fixed random seed (`42`) ensures reproducibility.
 
@@ -121,15 +99,15 @@ A fixed random seed (`42`) ensures reproducibility.
 | customer_id | String | Customer identifier |
 | product_id | String | Product identifier |
 | amount | Double | Order amount |
-| order_timestamp | String | Order creation date or timestamp |
+| order_timestamp | String | Order creation date/time |
 
 ### Data distribution
 
 - Approximately 70% of base orders belong to `CUST_HOT`.
 - Remaining orders are distributed across 1,000 normal customers.
-- Additional records test missing values, invalid amounts, duplicate IDs, blank customer IDs, and an older timestamp.
+- Additional records cover null values, invalid amounts, duplicate IDs, blank customer IDs and a late/out-of-range timestamp.
 
-## 7. Architecture and Processing Flow
+## 6. Architecture and Processing Flow
 
 ```text
 Synthetic Data Generator
@@ -138,16 +116,19 @@ Synthetic Data Generator
       orders.csv
           |
           v
-     Spark Pipeline
+     Spark Ingestion
+          |
+          v
+    Schema Definition
           |
           v
     Data Validation
           |
-     +----+-----+
-     |    |     |
-     v    v     v
+     +----+----+
+     |    |    |
+     v    v    v
    Valid Invalid Duplicate
-   Data  Data    Data
+   Data  Data   Data
      |
      v
   Skew Analysis
@@ -156,131 +137,56 @@ Synthetic Data Generator
 Normal Aggregation
      |
      v
-Salted Aggregation
+ Salted Aggregation
      |
      v
-Correctness and
-Performance Comparison
+Correctness Comparison
      |
      v
-Output Publishing
+Performance Measurement
      |
      v
-Metrics and Logs
+Metrics, Logs and Output
 ```
 
-## 8. Data Skew Analysis
+## 7. Data Skew Analysis
 
-The initial dataset is partitioned by `customer_id`.
+Data skew occurs when a small number of keys receive a disproportionately large number of records.
 
-The hot customer creates an uneven partition distribution.
+In this project, `CUST_HOT` receives approximately 70% of the base orders.
 
-### Observed initial partition distribution
+This creates an uneven workload during customer-level aggregation.
 
-| Partition | Records |
-|---|---:|
-| 0 | 3,163 |
-| 1 | 3,759 |
-| 2 | 73,992 |
-| 3 | 4,070 |
-| 4 | 3,152 |
-| 5 | 3,964 |
-| 6 | 3,806 |
-| 7 | 4,094 |
+The project analyzes partition distribution and compares the normal aggregation with a salted aggregation approach.
 
-Partition 2 contains most of the records, demonstrating the impact of key skew.
+## 8. Optimization: Salting
 
-### Hot-key skew analysis
+Salting introduces an additional key to distribute records belonging to a heavily concentrated customer.
 
-| Metric | Result |
-|---|---:|
-| Hot customer | CUST_HOT |
-| Hot customer orders | 70,153 |
-| Normal customers | 1,000 |
-| Average orders per normal customer | 29.85 |
-| Hot-key skew ratio | 2,350.34:1 |
+For `CUST_HOT`, a salt value between 0 and 7 is generated using a fixed random seed. Other customers receive salt value 0.
 
-**Key finding:** `CUST_HOT` has approximately 2,350 times more orders than the average normal customer.
+### Normal aggregation
 
-### Business insights
-
-| Metric | Result |
-|---|---:|
-| Total order value | 255,000,230.02 |
-| CUST_HOT order value | 178,625,584.97 |
-| CUST_HOT contribution to total order value | 70.05% |
-| CUST_HOT order count | 70,153 |
-| Total customer groups | 1,001 |
-
-Amounts are expressed in dataset units, not a specified real-world currency.
-
-## 9. Optimization: Salting
-
-Salting adds an additional key to distribute records belonging to the hot customer.
-
-For `CUST_HOT`, a salt value between 0 and 7 is generated. Other customers receive salt value 0.
-
-The first aggregation groups by:
+The normal approach groups records using:
 
 ```python
-customer_id, salt
+groupBy("customer_id")
 ```
 
-A second aggregation combines partial totals by `customer_id`.
+### Salted aggregation
 
-### Observed partition distribution after salting
+The optimized approach performs two aggregation stages:
 
-| Partition | Records |
-|---|---:|
-| 0 | 12,730 |
-| 1 | 12,152 |
-| 2 | 12,991 |
-| 3 | 13,073 |
-| 4 | 12,363 |
-| 5 | 21,041 |
-| 6 | 3,685 |
-| 7 | 11,965 |
+1. Group by `customer_id` and `salt` to calculate partial totals.
+2. Group by `customer_id` again to combine the partial totals.
 
-The busiest partition decreased from 73,992 to 21,041 records, approximately a **71.6% reduction**.
+This helps distribute the hot customer's workload across multiple groups before calculating the final total.
 
-## 10. Benchmark Results
+**Important:** Salting can improve workload distribution, but it does not guarantee faster execution. Additional aggregation stages introduce overhead.
 
-Three trials were conducted using the same cached input data.
+## 9. Pipeline Execution Results
 
-| Trial | Normal Aggregation (s) | Salted Aggregation (s) |
-|---|---:|---:|
-| 1 | 0.519 | 0.845 |
-| 2 | 0.249 | 0.415 |
-| 3 | 0.214 | 0.311 |
-| **Average** | **0.327** | **0.523** |
-
-### Interpretation
-
-Salting was approximately 60.1% slower on average in this local benchmark.
-
-Although salting improved partition distribution, the additional aggregation stage introduced overhead. For this workload and environment, normal aggregation was faster.
-
-A later pipeline execution also measured normal aggregation at 1.337 seconds and salted aggregation at 1.028 seconds.
-
-These measurements vary between executions and are not directly comparable to the three-trial benchmark. They demonstrate why performance conclusions should be based on repeated measurements under controlled conditions.
-
-Reducing data skew does not automatically guarantee lower runtime.
-
-## 11. Data Quality and Validation
-
-The pipeline applies the following business validation rules:
-
-- Reject records with missing order IDs.
-- Reject records with missing or blank customer IDs.
-- Reject records with missing product IDs.
-- Reject records with missing or non-positive amounts.
-- Reject records with missing or unparseable timestamps.
-- Quarantine every record associated with a duplicate order ID.
-- Retain older timestamps when the other validation rules pass.
-
-Both records associated with a duplicate order ID are quarantined.
-
-### Latest successful pipeline execution
+The latest successful pipeline execution produced the following results.
 
 | Metric | Result |
 |---|---:|
@@ -288,34 +194,79 @@ Both records associated with a duplicate order ID are quarantined.
 | Valid records | 100,001 |
 | Invalid records | 5 |
 | Duplicate records | 2 |
+| Original partitions | 2 |
+| Repartitioned partitions | 8 |
+| Coalesced partitions | 2 |
 | Normal customer groups | 1,001 |
 | Optimized customer groups | 1,001 |
 | Mismatched customer totals | 0 |
 | Aggregation results match | True |
 
-The records reconcile:
+### Record reconciliation
 
 ```text
-100008 = 100001 + 5 + 2
+100,008 = 100,001 + 5 + 2
 ```
 
-## 12. Running the Project
+All input records are accounted for across the valid, invalid and duplicate outputs.
+
+### Aggregation performance
+
+Latest recorded pipeline run:
+
+| Metric | Execution time |
+|---|---:|
+| Normal aggregation | 1.337 seconds |
+| Salted aggregation | 1.028 seconds |
+| Total pipeline runtime | 31.218 seconds |
+
+These are measurements from one local execution, not a guaranteed performance improvement. Results may vary with the environment, data volume and Spark execution conditions.
+
+## 10. Data Quality and Validation
+
+The validation module applies the following rules:
+
+- Reject records with missing order IDs.
+- Reject records with missing or blank customer IDs.
+- Reject records with missing product IDs.
+- Reject records with missing amounts.
+- Reject records with zero or negative amounts.
+- Reject records with missing timestamps.
+- Reject records with malformed timestamps.
+- Quarantine all records associated with duplicate order IDs.
+
+The timestamp validation accepts ISO date (`yyyy-MM-dd`) and ISO datetime (`yyyy-MM-dd'T'HH:mm:ss`) formats.
+
+Older timestamps are not automatically rejected. A separate late-arriving event policy is outside the current implementation.
+
+### Duplicate handling
+
+If an order ID appears more than once, all records associated with that duplicate ID are quarantined rather than arbitrarily retaining one record.
+
+## 11. Running the Project
 
 ### Prerequisites
 
 - Python 3.13
 - Java 21
+- Git
 - A compatible local Spark environment
 
-### Create a virtual environment (recommended)
+### Clone the repository
 
 ```bash
-python -m venv venv
+git clone https://github.com/Sharvani-kapsha/pyspark-data-skew-analysis.git
+
+cd pyspark-data-skew-analysis
 ```
 
-Activate it on Windows PowerShell:
+### Create a virtual environment
+
+Windows PowerShell:
 
 ```powershell
+python -m venv venv
+
 .\venv\Scripts\Activate.ps1
 ```
 
@@ -328,37 +279,27 @@ python -m pip install -r requirements.txt
 ### Generate synthetic data
 
 ```bash
-python -m src.generate_data
-```
-
-### Analyze skew
-
-```bash
-python -m src.analyze_skew
-```
-
-### Run salting optimization
-
-```bash
-python -m src.optimize_skew
-```
-
-### Run benchmark
-
-```bash
-python -m src.benchmark
+python src/generate_data.py
 ```
 
 ### Run the complete pipeline
 
 ```bash
-python -m src.pipeline
+python -m src.pipeline --input data/input/orders.csv --output data/output
 ```
 
-The pipeline also supports custom input and output paths:
+### Run individual analysis modules
 
 ```bash
-python -m src.pipeline --input data/input/orders.csv --output data/output
+python -m src.analyze_skew
+```
+
+```bash
+python -m src.optimize_skew
+```
+
+```bash
+python -m src.benchmark
 ```
 
 ### Run automated tests
@@ -367,115 +308,105 @@ python -m src.pipeline --input data/input/orders.csv --output data/output
 python -m pytest tests/ -v
 ```
 
-## 13. Pipeline Outputs and Observability
+## 12. Output and Observability
 
-The pipeline produces:
+The pipeline generates the following outputs under `data/output/`:
 
 | Output | Description |
 |---|---|
-| `valid_orders/` | Validated orders |
-| `invalid_orders/` | Records rejected by validation |
-| `duplicate_orders/` | Records associated with duplicate order IDs |
-| `customer_totals/` | Aggregated customer order values |
-| `metrics.json` | Run status, timestamps, counts, timings, and correctness results |
-| `pipeline.log` | Execution logs |
+| valid_orders | Records that pass validation and uniqueness checks |
+| invalid_orders | Records that fail business validation |
+| duplicate_orders | All records associated with duplicate order IDs |
+| customer_totals | Aggregated customer-level totals |
+| metrics.json | Execution status, record counts, timings and correctness metrics |
+| pipeline.log | Pipeline execution logs |
 
-The metrics include:
+The metrics include a unique run ID, execution timestamps, input path, record counts, partition information, aggregation timings, comparison results and failure details.
 
-- Unique run ID
-- Run status
-- Start and end timestamps in UTC
-- Input path and record count
-- Valid, invalid, and duplicate counts
-- Partition counts
-- Normal and salted aggregation timings
-- Aggregation comparison result
-- Total pipeline runtime
-- Failure reason, when applicable
+## 13. Repeatability and Failure Recovery
 
-## 14. Failure Recovery and Idempotency
+The pipeline uses a staging output directory before publishing successful results.
 
-The pipeline uses a staging directory for each execution.
+### Successful execution
 
-On successful processing:
+- Processing takes place in a run-specific staging directory.
+- Results and metrics are written before publishing.
+- On success, the staging output replaces the previous output.
+- A previous successful output is backed up during publishing and removed after successful replacement.
 
-1. Outputs are written to a new staging directory.
-2. Metrics are recorded.
-3. The previous successful output is backed up when present.
-4. The staging directory replaces the previous output.
-5. The backup is removed after successful publishing.
+### Failed execution
 
-On processing failure:
-
-- The failed run's metrics and logs are retained in a separate failed-run directory.
-- The previous successful output is preserved.
-- The failure reason is recorded in `metrics.json`.
-
-### Failure recovery verification
-
-A run was deliberately executed with a missing input file.
-
-The pipeline reported `FAILED`, recorded the `PATH_NOT_FOUND` error, and preserved the previous successful output. A subsequent valid execution completed successfully.
+- The pipeline records a failed status and failure reason.
+- Failed staging output is retained in a run-specific failure directory.
+- The previous successful output is preserved when processing fails before publishing.
 
 ### Repeatability verification
 
-The pipeline was executed twice with the same input dataset.
+The pipeline was executed more than once with the same input dataset.
 
-Both executions produced identical output counts:
+The successful executions produced consistent record counts and matching aggregation results.
 
-| Metric | Result |
-|---|---:|
-| Input records | 100,008 |
-| Valid records | 100,001 |
-| Invalid records | 5 |
-| Duplicate records | 2 |
-| Customer groups | 1,001 |
-| Aggregation mismatches | 0 |
+This demonstrates repeatability for the tested local filesystem workflow. It is not a guarantee of transactional recovery for distributed storage systems or every possible interruption during publishing.
 
-The output directory is replaced on a successful rerun rather than appended to, preventing duplicate output accumulation for this local CSV target.
+## 14. Automated Testing
 
-This demonstrates repeatability and recovery for the tested local execution workflow. It is not a general transactional guarantee for distributed or database sinks.
-
-## 15. Testing
-
-The project includes seven automated tests using Pytest.
+The project contains seven automated tests using Pytest.
 
 | Test case | Result |
 |---|---|
 | Valid orders | PASSED |
 | Null and malformed amounts | PASSED |
 | Duplicate order IDs | PASSED |
-| Empty datasets | PASSED |
+| Empty dataset | PASSED |
 | Negative and zero amounts | PASSED |
 | Blank customer IDs | PASSED |
 | Malformed timestamps | PASSED |
 
-### Recorded test execution
+### Latest test execution
 
-- Total tests: 7
-- Passed: 7
-- Failed: 0
+```text
+Collected: 7 tests
+Passed: 7
+Failed: 0
+Execution time: 252.90 seconds
+```
 
-Run the tests using:
+Command:
 
 ```bash
 python -m pytest tests/ -v
 ```
 
-## 16. Limitations and Trade-offs
+## 15. Limitations and Trade-offs
 
-- The benchmark uses local Spark execution, not a multi-node cluster.
-- Runtime measurements can vary between executions.
-- The benchmark uses three trials in one Spark session and is not a fully isolated performance study.
-- The salting implementation uses eight salt buckets.
-- The local output writer uses Python's CSV module and Spark's `toLocalIterator()` to stream rows to a single local CSV file. This avoids collecting the entire DataFrame into Pandas, but the output writer is still driver-side and is not a distributed production sink.
-- The pipeline currently validates order fields but does not implement a product master lookup or full referential-integrity validation.
-- The pipeline's local directory replacement strategy is not a substitute for transactional storage guarantees in a production data platform.
+- The project uses local Spark execution rather than a multi-node cluster.
+- Runtime measurements vary across executions and hardware environments.
+- Salting introduces an additional aggregation stage and may not improve runtime for smaller datasets.
+- The current pipeline uses eight salt buckets for the hot customer.
+- Local CSV publishing uses Python's CSV writer and Spark's `toLocalIterator()` to stream records through the driver. This avoids collecting the complete dataset into Pandas, but it is not a distributed output-writing strategy.
+- A product master/reference dataset and product-level referential integrity checks are not implemented.
+- Run IDs are recorded in execution metrics; they are not added as columns to every output record.
+- Late-arriving event handling and timezone-offset timestamp formats are not fully implemented.
+- The current publishing mechanism is designed for a local filesystem and is not a transactional distributed data sink.
+
+## 16. AI Assistance and Development
+
+AI assistance was used during development for:
+
+- Understanding Spark data skew and salting.
+- Debugging PySpark transformations.
+- Improving data validation logic.
+- Reviewing pipeline reliability and failure handling.
+- Preparing test cases and project documentation.
+
+The implementation was executed and tested locally.
 
 ## 17. Conclusion
 
-This project demonstrates the impact of data skew in Apache Spark, identifies a heavily concentrated customer key, and applies salting to improve partition distribution.
+This project demonstrates a reproducible Apache Spark workflow for analyzing data skew in an e-commerce orders dataset.
 
-The benchmark shows that salting can reduce the busiest partition while introducing additional runtime overhead. Correctness checks confirm that normal and salted aggregations produce matching customer totals.
+It identifies a heavily concentrated customer key, applies salting, validates records, quarantines duplicates, compares aggregation correctness and measures execution performance.
 
-The project also demonstrates data-quality validation, duplicate quarantine, automated testing, execution metrics, failure recovery, and repeatable output publishing in a reproducible data-processing workflow.
+The final pipeline execution produced matching normal and salted aggregation results with zero mismatches. Seven automated tests passed, and repeat execution and failure handling were verified in the local environment.
+
+The project highlights an important optimization principle: improving partition distribution does not automatically guarantee lower execution time. Performance decisions should be based on measured results and workload characteristics.
