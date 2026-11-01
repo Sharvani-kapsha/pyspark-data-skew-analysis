@@ -1,0 +1,75 @@
+
+# Python virtual environment
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# IDE
+.vscode/
+
+# Spark temporary files
+spark-warehouse/
+metastore_db/
+
+# Logs
+*.log
+
+# Generated data (keep folder structure)
+data/input/*
+data/output/*
+!data/input/.gitkeep
+!data/output/.gitkeep
+
+## 3. Where your project stands
+
+<box border radius="lg" padding={3} gap={2}>
+  <title size="lg">Spark Data Skew Project</title>
+  <row justify="between">
+    Project implementation
+
+    <badge color="success">Completed</badge>
+  </row>
+  <row justify="between">
+    Data validation
+
+    <badge color="success">Verified</badge>
+  </row>
+  <row justify="between">
+    Salting optimization
+
+    <badge color="success">Implemented</badge>
+  </row>
+  <row justify="between">
+    Aggregation correctness
+
+    <badge color="success">Verified</badge>
+  </row>
+  <row justify="between">
+    Automated tests
+
+    <badge color="success">6 passed</badge>
+  </row>
+  <row justify="between">
+    README
+
+    <badge color="warning">Final review pending</badge>
+  </row>
+  <row justify="between">
+    GitHub publication
+
+    <badge color="warning">Pending</badge>
+  </row>
+</box>
+
+## 4. Next step — Verify your Git ignore rules
+
+Before uploading anything to GitHub, let's check whether `.gitignore` is working.
+
+Run this command:
+
+```powershell
+git status --short
