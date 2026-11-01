@@ -1,0 +1,5 @@
+Trial,Normal Aggregation (seconds),Salted Aggregation (seconds)
+1,0.519,0.845
+2,0.249,0.415
+3,0.214,0.311
+Average,0.327,0.523

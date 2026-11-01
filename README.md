@@ -304,8 +304,28 @@ The pipeline produces:
 - `metrics.json` — record counts, runtime measurements, and correctness results.
 - `pipeline.log` — execution logs.
 
+## 13. Project Results and Visualizations
 
-## 13. Testing
+### Data Skew: Before vs After Salting
+
+The following chart compares the partition distribution before and after applying salting.
+
+![Spark Data Skew Analysis](reports/data_skew_analysis.png)
+
+**Key Result:** The busiest partition's record count decreased from 73,992 to 21,041, representing approximately a 71.6% reduction.
+
+### Download Project Reports
+
+| Report | Description |
+|---|---|
+| [Execution Metrics](reports/metrics.json) | Pipeline execution results |
+| [Customer Totals](reports/customer_totals.csv) | Aggregated customer order values |
+| [Benchmark Results](reports/benchmark_results.csv) | Normal vs salted aggregation timings |
+| [Skew Analysis Chart](reports/data_skew_analysis.png) | Partition distribution visualization |
+| [Chart Generation Script](reports/create_skew_chart.py) | Python visualization code |
+
+
+## 14. Testing
 
 The project includes six automated tests using Pytest.
 
@@ -329,7 +349,7 @@ Run the tests using:
 ```bash
 python -m pytest tests/ -v
 
-14. Limitations and Trade-offs
+15. Limitations and Trade-offs
 
 - The benchmark uses local Spark execution, not a multi-node cluster.
 - Runtime measurements can vary between runs.
@@ -357,7 +377,7 @@ Before each run, previous generated outputs are cleaned from the output director
 
 This confirms repeatability for successful runs with the same input dataset. It does not yet guarantee transactional recovery after a failed or interrupted write.
 
-## 15. Conclusion
+## 16. Conclusion
 
 This project demonstrates the impact of data skew in Apache Spark, identifies a heavily concentrated customer key, and applies salting to improve partition distribution.
 

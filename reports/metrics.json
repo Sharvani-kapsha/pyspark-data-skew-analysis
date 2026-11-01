@@ -1,0 +1,16 @@
+{
+    "input_records": 100008,
+    "valid_records": 100001,
+    "invalid_records": 5,
+    "duplicate_records": 2,
+    "original_partitions": 2,
+    "repartitioned_partitions": 8,
+    "coalesced_partitions": 2,
+    "normal_customer_groups": 1001,
+    "optimized_customer_groups": 1001,
+    "normal_aggregation_seconds": 0.805,
+    "salted_aggregation_seconds": 0.707,
+    "mismatched_customer_totals": 0,
+    "aggregation_results_match": true,
+    "total_pipeline_seconds": 21.041
+}
