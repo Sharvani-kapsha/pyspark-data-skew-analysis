@@ -125,3 +125,15 @@ def test_blank_customer_id(spark, schema):
 
     assert valid.count() == 0
     assert invalid.count() == 1
+def test_malformed_timestamp(spark, schema):
+    data = [
+        (1, "C001", "P001", 500.0, "not-a-date")
+    ]
+
+    orders = spark.createDataFrame(data, schema)
+
+    valid, invalid, duplicates = validate_orders(orders)
+
+    assert valid.count() == 0
+    assert invalid.count() == 1
+    assert duplicates.count() == 0

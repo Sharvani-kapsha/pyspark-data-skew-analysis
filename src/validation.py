@@ -1,8 +1,29 @@
 
-from pyspark.sql.functions import col, count, trim
+from pyspark.sql.functions import (
+    col,
+    count,
+    trim,
+    coalesce,
+    try_to_timestamp,
+    lit
+)
 
 
 def validate_orders(orders):
+
+    # Accept both ISO date and ISO datetime formats safely
+    parsed_timestamp = coalesce(
+        try_to_timestamp(
+            col("order_timestamp"),
+            lit("yyyy-MM-dd'T'HH:mm:ss")
+        ),
+        try_to_timestamp(
+            col("order_timestamp"),
+            lit("yyyy-MM-dd")
+        )
+    )
+
+    valid_timestamp = parsed_timestamp.isNotNull()
 
     # Rules for identifying invalid records
     invalid_condition = (
@@ -13,6 +34,7 @@ def validate_orders(orders):
         | col("amount").isNull()
         | (col("amount") <= 0)
         | col("order_timestamp").isNull()
+        | ~valid_timestamp
     )
 
     # Separate invalid records

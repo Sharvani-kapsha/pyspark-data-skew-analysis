@@ -1,16 +1,27 @@
 
 import argparse
+import csv
 import json
 import sys
 import logging
 import time
 import shutil
+import uuid
+
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Make project root available for imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pyspark.sql import SparkSession
+from pyspark.sql.types import (
+    StructType,
+    StructField,
+    IntegerType,
+    StringType,
+    DoubleType
+)
 from pyspark.sql.functions import (
     col,
     sum as spark_sum,
@@ -20,6 +31,16 @@ from pyspark.sql.functions import (
 )
 
 from src.validation import validate_orders
+
+
+# Explicit source schema
+ORDERS_SCHEMA = StructType([
+    StructField("order_id", IntegerType(), True),
+    StructField("customer_id", StringType(), True),
+    StructField("product_id", StringType(), True),
+    StructField("amount", DoubleType(), True),
+    StructField("order_timestamp", StringType(), True)
+])
 
 
 def create_spark_session():
@@ -33,36 +54,110 @@ def create_spark_session():
 
 
 def save_dataframe(dataframe, folder_path):
-    """Save a Spark DataFrame as a local CSV file."""
+    """Stream Spark DataFrame rows into a local CSV file."""
+
     folder = Path(folder_path)
     folder.mkdir(parents=True, exist_ok=True)
 
-    pandas_df = dataframe.toPandas()
-    pandas_df.to_csv(folder / "part-00000.csv", index=False)
+    output_file = folder / "part-00000.csv"
+
+    with output_file.open(
+        "w",
+        newline="",
+        encoding="utf-8"
+    ) as file:
+
+        writer = csv.writer(file)
+        writer.writerow(dataframe.columns)
+
+        for row in dataframe.toLocalIterator():
+            writer.writerow([
+                value if value is not None else ""
+                for value in row
+            ])
+
+
+def save_metrics(metrics, output_dir):
+    """Save execution metrics as JSON."""
+
+    with open(
+        output_dir / "metrics.json",
+        "w",
+        encoding="utf-8"
+    ) as file:
+
+        json.dump(metrics, file, indent=4)
+
+
+def close_logging_handlers():
+    """Close log files before moving output directories."""
+
+    root_logger = logging.getLogger()
+
+    for handler in root_logger.handlers[:]:
+        handler.flush()
+        handler.close()
+        root_logger.removeHandler(handler)
 
 
 def run_pipeline(input_path, output_dir):
+
     start_time = time.perf_counter()
 
+    # Generate a unique ID for every execution
+    run_id = str(uuid.uuid4())
+
+    started_at = datetime.now(timezone.utc).isoformat()
+
     output_dir = Path(output_dir)
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
 
-    # Clean previous outputs before starting
-    if output_dir.exists():
-        for item in output_dir.iterdir():
-            if item.is_dir():
-                shutil.rmtree(item)
-            elif item.name != "pipeline.log":
-                item.unlink()
+    # Temporary and failed-run directories
+    staging_dir = output_dir.parent / (
+        f"{output_dir.name}_staging_{run_id}"
+    )
 
-    output_dir.mkdir(parents=True, exist_ok=True)
+    failed_dir = output_dir.parent / (
+        f"{output_dir.name}_failed_{run_id}"
+    )
 
-    # Configure logging
+    backup_dir = output_dir.parent / (
+        f"{output_dir.name}_backup_{run_id}"
+    )
+
+    staging_dir.mkdir(parents=True, exist_ok=True)
+
+    # Initial metrics
+    metrics = {
+        "run_id": run_id,
+        "status": "RUNNING",
+        "started_at_utc": started_at,
+        "ended_at_utc": None,
+        "input_path": str(input_path),
+        "input_records": 0,
+        "valid_records": 0,
+        "invalid_records": 0,
+        "duplicate_records": 0,
+        "original_partitions": 0,
+        "repartitioned_partitions": 0,
+        "coalesced_partitions": 0,
+        "normal_customer_groups": 0,
+        "optimized_customer_groups": 0,
+        "normal_aggregation_seconds": 0,
+        "salted_aggregation_seconds": 0,
+        "mismatched_customer_totals": None,
+        "aggregation_results_match": None,
+        "total_pipeline_seconds": None,
+        "failure_reason": None
+    }
+
+    # Configure logging in the temporary directory
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
         handlers=[
             logging.FileHandler(
-                output_dir / "pipeline.log",
+                staging_dir / "pipeline.log",
                 mode="a"
             ),
             logging.StreamHandler()
@@ -70,48 +165,49 @@ def run_pipeline(input_path, output_dir):
         force=True
     )
 
-    spark = create_spark_session()
-    spark.sparkContext.setLogLevel("ERROR")
+    spark = None
+    successful = False
 
     try:
-        logging.info("Pipeline started")
+
+        logging.info("Pipeline started. Run ID: %s", run_id)
+
+        spark = create_spark_session()
+        spark.sparkContext.setLogLevel("ERROR")
 
         # 1. Read input data
         orders = (
             spark.read
             .option("header", True)
-            .option("inferSchema", True)
+            .schema(ORDERS_SCHEMA)
             .csv(str(input_path))
         )
 
         total_records = orders.count()
+        metrics["input_records"] = total_records
+
         logging.info("Input records: %s", total_records)
 
         # 2. Partition analysis
         original_partitions = orders.rdd.getNumPartitions()
 
         repartitioned_orders = orders.repartition(8)
+
         repartitioned_partitions = (
             repartitioned_orders.rdd.getNumPartitions()
         )
 
         coalesced_orders = repartitioned_orders.coalesce(2)
+
         coalesced_partitions = (
             coalesced_orders.rdd.getNumPartitions()
         )
 
-        logging.info(
-            "Original partitions: %s",
-            original_partitions
-        )
-        logging.info(
-            "After repartition(8): %s",
-            repartitioned_partitions
-        )
-        logging.info(
-            "After coalesce(2): %s",
-            coalesced_partitions
-        )
+        metrics.update({
+            "original_partitions": original_partitions,
+            "repartitioned_partitions": repartitioned_partitions,
+            "coalesced_partitions": coalesced_partitions
+        })
 
         print("\nPARTITION ANALYSIS")
         print("Original partitions:", original_partitions)
@@ -127,6 +223,12 @@ def run_pipeline(input_path, output_dir):
         invalid_count = invalid_orders.count()
         duplicate_count = duplicate_orders.count()
 
+        metrics.update({
+            "valid_records": valid_count,
+            "invalid_records": invalid_count,
+            "duplicate_records": duplicate_count
+        })
+
         logging.info("Valid records: %s", valid_count)
         logging.info("Invalid records: %s", invalid_count)
         logging.info("Duplicate records: %s", duplicate_count)
@@ -134,17 +236,17 @@ def run_pipeline(input_path, output_dir):
         # 4. Save validated and quarantined records
         save_dataframe(
             valid_orders,
-            output_dir / "valid_orders"
+            staging_dir / "valid_orders"
         )
 
         save_dataframe(
             invalid_orders,
-            output_dir / "invalid_orders"
+            staging_dir / "invalid_orders"
         )
 
         save_dataframe(
             duplicate_orders,
-            output_dir / "duplicate_orders"
+            staging_dir / "duplicate_orders"
         )
 
         # 5. Normal aggregation
@@ -159,7 +261,10 @@ def run_pipeline(input_path, output_dir):
         )
 
         normal_count = normal_result.count()
-        normal_seconds = time.perf_counter() - normal_start
+
+        normal_seconds = (
+            time.perf_counter() - normal_start
+        )
 
         # 6. Salted aggregation
         salted_start = time.perf_counter()
@@ -189,7 +294,10 @@ def run_pipeline(input_path, output_dir):
         )
 
         optimized_count = optimized_result.count()
-        salted_seconds = time.perf_counter() - salted_start
+
+        salted_seconds = (
+            time.perf_counter() - salted_start
+        )
 
         # 7. Verify aggregation correctness
         differences = (
@@ -214,57 +322,112 @@ def run_pipeline(input_path, output_dir):
             .count()
         )
 
+        metrics.update({
+            "normal_customer_groups": normal_count,
+            "optimized_customer_groups": optimized_count,
+            "normal_aggregation_seconds": round(normal_seconds, 3),
+            "salted_aggregation_seconds": round(salted_seconds, 3),
+            "mismatched_customer_totals": differences,
+            "aggregation_results_match": differences == 0
+        })
+
         # 8. Save optimized aggregation
         save_dataframe(
             optimized_result,
-            output_dir / "customer_totals"
+            staging_dir / "customer_totals"
         )
 
-        total_seconds = time.perf_counter() - start_time
+        # Stop Spark before marking the run successful
+        spark.stop()
+        spark = None
 
-        # 9. Save processing metrics
-        metrics = {
-            "input_records": total_records,
-            "valid_records": valid_count,
-            "invalid_records": invalid_count,
-            "duplicate_records": duplicate_count,
-            "original_partitions": original_partitions,
-            "repartitioned_partitions": repartitioned_partitions,
-            "coalesced_partitions": coalesced_partitions,
-            "normal_customer_groups": normal_count,
-            "optimized_customer_groups": optimized_count,
-            "normal_aggregation_seconds": round(
-                normal_seconds, 3
-            ),
-            "salted_aggregation_seconds": round(
-                salted_seconds, 3
-            ),
-            "mismatched_customer_totals": differences,
-            "aggregation_results_match": differences == 0,
-            "total_pipeline_seconds": round(total_seconds, 3)
-        }
+        # 9. Finalize successful metrics
+        metrics["status"] = "SUCCESS"
+        metrics["ended_at_utc"] = (
+            datetime.now(timezone.utc).isoformat()
+        )
 
-        with open(
-            output_dir / "metrics.json",
-            "w",
-            encoding="utf-8"
-        ) as file:
-            json.dump(metrics, file, indent=4)
+        metrics["total_pipeline_seconds"] = round(
+            time.perf_counter() - start_time, 3
+        )
 
-        logging.info("Pipeline completed")
+        save_metrics(metrics, staging_dir)
+
+        logging.info("Pipeline completed successfully")
+        logging.info("Run ID: %s", run_id)
+
+        successful = True
 
         print("\nPIPELINE RESULTS")
         print(json.dumps(metrics, indent=4))
 
-    except Exception:
-        logging.exception("Pipeline failed")
+    except Exception as error:
+
+        logging.exception("Pipeline failed. Run ID: %s", run_id)
+
+        metrics["status"] = "FAILED"
+        metrics["failure_reason"] = str(error)
+
+        metrics["ended_at_utc"] = (
+            datetime.now(timezone.utc).isoformat()
+        )
+
+        metrics["total_pipeline_seconds"] = round(
+            time.perf_counter() - start_time, 3
+        )
+
+        try:
+            save_metrics(metrics, staging_dir)
+        except Exception:
+            logging.exception("Could not save failure metrics")
+
         raise
 
     finally:
-        spark.stop()
+
+        if spark is not None:
+            spark.stop()
+
+        # Close file handlers before moving directories
+        close_logging_handlers()
+
+        if successful:
+
+            # Preserve the previous successful output temporarily
+            if output_dir.exists():
+                output_dir.replace(backup_dir)
+
+            try:
+                # Publish new output
+                staging_dir.replace(output_dir)
+
+                # Remove old output only after successful publishing
+                if backup_dir.exists():
+                    shutil.rmtree(backup_dir)
+
+            except Exception:
+
+                # Restore previous output if publishing fails
+                if backup_dir.exists() and not output_dir.exists():
+                    backup_dir.replace(output_dir)
+
+                raise
+
+        else:
+
+            # Preserve failed run for debugging
+            if staging_dir.exists():
+                staging_dir.replace(failed_dir)
+
+            print(
+                "\nPipeline failed. Previous successful output "
+                "has been preserved."
+            )
+            print("Failed run details:", failed_dir)
 
 
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser(
         description="Run the Spark data skew pipeline"
     )

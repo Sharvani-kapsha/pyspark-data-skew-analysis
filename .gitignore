@@ -73,3 +73,4 @@ Run this command:
 
 ```powershell
 git status --short
+data/output_failed_*/
