@@ -301,7 +301,7 @@ Run the tests using:
 ```bash
 python -m pytest tests/ -v
 
-## 14. Limitations and Trade-offs
+14. Limitations and Trade-offs
 
 - The benchmark uses local Spark execution, not a multi-node cluster.
 - Runtime measurements can vary between runs.
