@@ -276,7 +276,6 @@ The pipeline produces:
 - `metrics.json` — record counts, runtime measurements, and correctness results.
 - `pipeline.log` — execution logs.
 
-## 13. Testing
 
 ## 13. Testing
 
